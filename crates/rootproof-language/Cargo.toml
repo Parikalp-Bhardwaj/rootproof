@@ -1,0 +1,11 @@
+[package]
+name = "rootproof-language"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rootproof-core = { path = "../rootproof-core" }
+rootproof-git =  { path = "../rootproof-git" }
+
+[dev-dependencies]
+tempfile = "3"

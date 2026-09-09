@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/rootproof-core",
+    "crates/rootproof-cli",
+    "crates/rootproof-executor",
+    "crates/rootproof-language",
+    "crates/rootproof-ai",
+    "crates/rootproof-agents",
+    "crates/rootproof-git",
+    "examples/rust-basic",
+]
+
+

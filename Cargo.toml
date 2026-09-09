@@ -9,7 +9,7 @@ members = [
     "crates/rootproof-ai",
     "crates/rootproof-agents",
     "crates/rootproof-git",
-    "examples/rust-basic",
+    "examples/rust-basic", "fixtures/rust-failing",
 ]
 
 

@@ -1,8 +1,4 @@
-use std::{
-    fmt,
-    path::Path,
-    time::Duration,
-};
+use std::{fmt, path::Path, time::Duration};
 
 use crate::CommandSpec;
 
@@ -40,10 +36,7 @@ impl fmt::Display for AllowedCommand {
     }
 }
 
-pub fn command_spec(
-    command: AllowedCommand,
-    repo: &Path,
-) -> CommandSpec {
+pub fn command_spec(command: AllowedCommand, repo: &Path) -> CommandSpec {
     CommandSpec::new(command.program(), repo)
         .args(command.args().iter().copied())
         .timeout(Duration::from_secs(120))

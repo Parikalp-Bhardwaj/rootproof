@@ -7,5 +7,5 @@ pub mod result;
 pub use command::CommandSpec;
 pub use error::ExecutorError;
 pub use executor::execute;
-pub use policy::{command_spec, AllowedCommand};
+pub use policy::{AllowedCommand, command_spec};
 pub use result::CommandResult;

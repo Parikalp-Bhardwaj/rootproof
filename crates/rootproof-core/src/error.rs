@@ -16,4 +16,12 @@ pub enum RootProofError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("failed to read incident input {path}: {source}")]
+    ReadIncidentInput {
+        path: PathBuf,
+
+        #[source]
+        source: std::io::Error,
+    },
 }

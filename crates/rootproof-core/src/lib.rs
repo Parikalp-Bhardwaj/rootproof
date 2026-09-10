@@ -1,8 +1,14 @@
 use std::path::PathBuf;
 pub mod error;
+pub mod failure;
+pub mod incident;
+pub mod input;
 pub mod repository;
 
 pub use error::RootProofError;
+pub use failure::{FailureSignature, StackFrame};
+pub use incident::Incident;
+pub use input::read_incident_input;
 pub use repository::{Language, RepositoryInfo};
 
 #[derive(Debug, Clone)]

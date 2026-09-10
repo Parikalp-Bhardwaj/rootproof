@@ -1,9 +1,6 @@
-use std::path::Path;
 use rootproof_core::Language;
-use rootproof_executor::{
-    CommandResult,
-    ExecutorError,
-};
+use rootproof_executor::{CommandResult, ExecutorError};
+use std::path::Path;
 
 pub trait LanguageAdapter {
     fn language(&self) -> Language;
@@ -12,21 +9,10 @@ pub trait LanguageAdapter {
     fn check(
         &self,
         repo: &Path,
-    ) -> impl Future<
-        Output = Result<
-            CommandResult,
-            ExecutorError,
-        >,
-    > + Send;
+    ) -> impl Future<Output = Result<CommandResult, ExecutorError>> + Send;
 
     fn test(
         &self,
         repo: &Path,
-    ) -> impl Future<
-        Output = Result<
-            CommandResult,
-            ExecutorError,
-        >,
-    > + Send;
-
+    ) -> impl Future<Output = Result<CommandResult, ExecutorError>> + Send;
 }

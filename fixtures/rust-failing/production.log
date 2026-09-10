@@ -1,0 +1,4 @@
+thread 'tests::intentionally_failing_test' panicked at fixtures/rust-failing/src/lib.rs:11:9:
+assertion `left == right` failed
+  left: 5
+ right: 10

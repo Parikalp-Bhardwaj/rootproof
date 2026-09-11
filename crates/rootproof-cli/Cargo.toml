@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["macros","rt-multi-thread",]}
 
-tokio = { version = "1", features = ["macros","rt-multi-thread"]}
 rootproof-core = { path = "../rootproof-core" }
 rootproof-language = { path = "../rootproof-language" }
+rootproof-ai = { path = "../rootproof-ai" }

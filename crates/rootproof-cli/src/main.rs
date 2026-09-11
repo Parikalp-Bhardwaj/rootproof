@@ -4,6 +4,8 @@ use clap::{Parser, Subcommand};
 use rootproof_core::{Incident, Language, read_incident_input};
 use rootproof_language::{LanguageAdapter, RustAdapter, inspect_repository, parse_rust_failure};
 
+use rootproof_ai::{OpenRouterProvider, load_config, save_config, RootProofConfig};
+
 #[derive(Debug, Parser)]
 #[command(name = "rootproof")]
 #[command(version)]
@@ -34,12 +36,19 @@ enum Commands {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+
+    /// Test the configured AI provider.
+    AiTest,
 }
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
     /// Configure the AI model.
-    Model,
+    Model {
+        /// OpenRouter model identifier.
+        #[arg(long)]
+        model: String,
+    },
 }
 
 #[tokio::main]
@@ -63,7 +72,11 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Commands::Config { command } => {
-            run_config(command);
+            run_config(command).await?;
+        }
+
+        Commands::AiTest => {
+            run_ai_test().await?;
         }
     }
 
@@ -152,12 +165,31 @@ async fn investigate(
     Ok(())
 }
 
-fn run_config(command: ConfigCommand) {
+async fn run_config(command: ConfigCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
-        ConfigCommand::Model => {
-            println!("Model configuration is not implemented yet.");
+        ConfigCommand::Model { model } => {
+            let config =
+            RootProofConfig::openrouter(
+                model.clone(),
+            );
+
+            let path = save_config(&config)?;
+
+            println!("RootProof AI");
+            println!();
+
+            println!("Provider: OpenRouter");
+
+            println!("Model: {model}");
+
+            println!();
+            println!("Configuration saved.");
+
+            println!("Config: {}",path.display());
         }
     }
+
+    Ok(())
 }
 
 async fn run_tests(repo: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
@@ -244,6 +276,36 @@ fn format_exit_code(exit_code: Option<i32>) -> String {
         Some(code) => code.to_string(),
         None => "terminated by signal".to_owned(),
     }
+}
+
+async fn run_ai_test() -> Result<(), Box<dyn std::error::Error>> {
+    let config =
+        load_config()?;
+
+    println!("RootProof AI");
+    println!();
+
+    println!("Provider: {}",config.ai.provider);
+
+    println!("Model: {}",config.ai.model);
+
+    println!();
+    println!("Testing connection...");
+
+    let provider = OpenRouterProvider::new(config.ai)?;
+
+    let response =
+        provider
+            .prompt(
+                "Reply with exactly: ROOTPROOF_OK",
+            )
+            .await?;
+
+    println!();
+    println!("Response received:");
+    println!("{response}");
+
+    Ok(())
 }
 
 #[cfg(test)]

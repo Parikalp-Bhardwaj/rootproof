@@ -10,3 +10,4 @@ tokio = { version = "1", features = ["macros","rt-multi-thread",]}
 rootproof-core = { path = "../rootproof-core" }
 rootproof-language = { path = "../rootproof-language" }
 rootproof-ai = { path = "../rootproof-ai" }
+rootproof-agents = { path = "../rootproof-agents"}

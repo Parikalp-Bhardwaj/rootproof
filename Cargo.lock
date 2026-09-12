@@ -5511,6 +5511,12 @@ dependencies = [
 [[package]]
 name = "rootproof-agents"
 version = "0.1.0"
+dependencies = [
+ "rootproof-ai",
+ "rootproof-core",
+ "schemars 1.2.2",
+ "serde",
+]
 
 [[package]]
 name = "rootproof-ai"
@@ -5518,6 +5524,7 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "rig",
+ "schemars 1.2.2",
  "serde",
  "thiserror",
  "tokio",
@@ -5529,6 +5536,7 @@ name = "rootproof-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "rootproof-agents",
  "rootproof-ai",
  "rootproof-core",
  "rootproof-language",

@@ -1,15 +1,19 @@
 use std::path::PathBuf;
 pub mod error;
+pub mod evidence;
 pub mod failure;
 pub mod incident;
 pub mod input;
 pub mod repository;
+pub mod source;
 
 pub use error::RootProofError;
+pub use evidence::{Evidence, EvidenceBundle, EvidenceKind};
 pub use failure::{FailureSignature, StackFrame};
 pub use incident::Incident;
 pub use input::read_incident_input;
 pub use repository::{Language, RepositoryInfo};
+pub use source::{SourceAnalysis, SourceContext, SourceFinding};
 
 #[derive(Debug, Clone)]
 pub struct Repository {

@@ -1,10 +1,16 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use rootproof_core::{Incident, Language, read_incident_input};
-use rootproof_language::{LanguageAdapter, RustAdapter, inspect_repository, parse_rust_failure};
+use rootproof_core::{
+    Evidence, EvidenceBundle, EvidenceKind, Incident, Language, read_incident_input,
+};
+use rootproof_language::{
+    LanguageAdapter, RustAdapter, inspect_repository, parse_rust_failure, read_source_context,
+    resolve_failure_file,
+};
+use rootproof_ai::{OpenRouterProvider, RootProofConfig, load_config, save_config};
+use rootproof_agents::analyze_source;
 
-use rootproof_ai::{OpenRouterProvider, load_config, save_config, RootProofConfig};
 
 #[derive(Debug, Parser)]
 #[command(name = "rootproof")]
@@ -148,6 +154,40 @@ async fn investigate(
                 println!("Column: {column}");
             }
 
+            let mut evidence = EvidenceBundle::new();
+
+            evidence.push(Evidence {
+                id: "E1".to_owned(),
+                kind: EvidenceKind::Panic,
+                file: failure.file.clone(),
+                line: failure.line,
+                content: failure.message.clone().unwrap_or_default(),
+            });
+
+            if let (Some(file), Some(line)) = (&failure.file, failure.line) {
+                if let Some(relative_file) = resolve_failure_file(&info.path, file) {
+                    let source = read_source_context(&info.path, &relative_file, line, 5)?;
+
+                    println!();
+                    println!("Source context:");
+                    println!();
+
+                    println!("{}", source.content);
+
+                    evidence.push(Evidence {
+                        id: "E2".to_owned(),
+                        kind: EvidenceKind::Source,
+                        file: Some(source.file.clone()),
+                        line: Some(source.target_line),
+                        content: source.content.clone(),
+                    });
+                } else {
+                    println!();
+
+                    println!("Source file could not be resolved.");
+                }
+            }
+
             let _incident = Incident {
                 id: "RP-0001".to_owned(),
                 repository: info.path.clone(),
@@ -155,6 +195,34 @@ async fn investigate(
                 raw_input,
                 failure,
             };
+
+            println!();
+            println!("Evidence collected: {}", evidence.evidence.len());
+
+            let config = load_config()?;
+
+            let provider = OpenRouterProvider::new(config.ai)?;
+
+            println!();
+            println!("Analyzing source evidence...");
+
+            let analysis = analyze_source(&provider, &evidence).await?;
+
+            println!();
+            println!("Source findings:");
+
+            for finding in analysis.findings {
+                println!();
+
+                println!("- Type: {}",finding.finding_type);
+
+                if let Some(expression) =
+                    finding.expression{
+                        println!("  Expression: {expression}");
+                }
+
+                println!("  Reason: {}",finding.reason);
+            }
         }
 
         None => {
@@ -168,10 +236,7 @@ async fn investigate(
 async fn run_config(command: ConfigCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         ConfigCommand::Model { model } => {
-            let config =
-            RootProofConfig::openrouter(
-                model.clone(),
-            );
+            let config = RootProofConfig::openrouter(model.clone());
 
             let path = save_config(&config)?;
 
@@ -185,7 +250,7 @@ async fn run_config(command: ConfigCommand) -> Result<(), Box<dyn std::error::Er
             println!();
             println!("Configuration saved.");
 
-            println!("Config: {}",path.display());
+            println!("Config: {}", path.display());
         }
     }
 
@@ -231,15 +296,9 @@ async fn run_tests(repo: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         println!();
         println!("Failure detected:");
 
-        println!(
-            "Type: {}",
-            failure.error_type.as_deref().unwrap_or("unknown")
-        );
+        println!("Type: {}", failure.error_type.as_deref().unwrap_or("unknown"));
 
-        println!(
-            "Message: {}",
-            failure.message.as_deref().unwrap_or("unknown")
-        );
+        println!("Message: {}", failure.message.as_deref().unwrap_or("unknown"));
 
         if let Some(file) = &failure.file {
             print!("Location: {}", file.display());
@@ -279,27 +338,21 @@ fn format_exit_code(exit_code: Option<i32>) -> String {
 }
 
 async fn run_ai_test() -> Result<(), Box<dyn std::error::Error>> {
-    let config =
-        load_config()?;
+    let config = load_config()?;
 
     println!("RootProof AI");
     println!();
 
-    println!("Provider: {}",config.ai.provider);
+    println!("Provider: {}", config.ai.provider);
 
-    println!("Model: {}",config.ai.model);
+    println!("Model: {}", config.ai.model);
 
     println!();
     println!("Testing connection...");
 
     let provider = OpenRouterProvider::new(config.ai)?;
 
-    let response =
-        provider
-            .prompt(
-                "Reply with exactly: ROOTPROOF_OK",
-            )
-            .await?;
+    let response = provider.prompt("Reply with exactly: ROOTPROOF_OK").await?;
 
     println!();
     println!("Response received:");

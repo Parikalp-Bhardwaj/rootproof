@@ -18,16 +18,16 @@ pub enum AiError {
     ConfigDirectoryUnavailable,
 
     #[error("failed to access config path {path}: {source}")]
-    ConfigIo{
+    ConfigIo {
         path: PathBuf,
 
         #[source]
-        source: io::Error
+        source: io::Error,
     },
 
     #[error("failed to serialize RootProof config: {0}")]
     ConfigSerialize(String),
 
     #[error("failed to parse RootProof config: {0}")]
-    ConfigParse(String)
+    ConfigParse(String),
 }

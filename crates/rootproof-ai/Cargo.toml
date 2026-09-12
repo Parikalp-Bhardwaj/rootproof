@@ -11,3 +11,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 directories = "6"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
+schemars = "1"

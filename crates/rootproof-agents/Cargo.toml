@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rootproof-ai = { path = "../rootproof-ai" }
+rootproof-core = { path = "../rootproof-core" }
+
+serde = { version = "1", features = ["derive"] }
+schemars = "1"

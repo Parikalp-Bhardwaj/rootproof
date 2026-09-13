@@ -1,7 +1,7 @@
 use crate::{AiConfig, AiError};
 use rig::{client::AgentClientExt, completion::Prompt, providers::openrouter};
 use schemars::JsonSchema;
-use serde::{de::DeserializeOwned,Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub struct OpenRouterProvider {
     config: AiConfig,
@@ -46,40 +46,21 @@ impl OpenRouterProvider {
     }
 
     pub async fn extract<T>(&self, input: &str, preamble: &str) -> Result<T, AiError>
-        where
-            T: JsonSchema
-                + DeserializeOwned
-                + Serialize
-                + Send
-                + Sync
-                + 'static{
-        let client =
-            openrouter::Client::new(
-                self.api_key.clone(),
-            )
-            .map_err(|error| {
-                AiError::Provider(
-                    error.to_string(),
-                )
-            })?;
-    
-        let extractor =
-            client
-                .extractor::<T>(
-                    &self.config.model,
-                )
-                .preamble(preamble)
-                .retries(2)
-                .build();
-    
+    where
+        T: JsonSchema + DeserializeOwned + Serialize + Send + Sync + 'static,
+    {
+        let client = openrouter::Client::new(self.api_key.clone())
+            .map_err(|error| AiError::Provider(error.to_string()))?;
+
+        let extractor = client
+            .extractor::<T>(&self.config.model)
+            .preamble(preamble)
+            .retries(2)
+            .build();
+
         extractor
             .extract(input)
             .await
-            .map_err(|error| {
-                AiError::Provider(
-                    error.to_string(),
-                )
-            })
+            .map_err(|error| AiError::Provider(error.to_string()))
     }
 }
-

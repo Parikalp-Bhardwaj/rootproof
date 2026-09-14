@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use rootproof_agents::{analyze_source, generate_hypotheses};
+use rootproof_agents::{analyze_source, generate_hypotheses, generate_reproduction};
 use rootproof_ai::{OpenRouterProvider, RootProofConfig, load_config, save_config};
 use rootproof_core::{
     Evidence, EvidenceBundle, EvidenceKind, Incident, Language, read_incident_input,
 };
 use rootproof_language::{
     LanguageAdapter, RustAdapter, inspect_repository, parse_rust_failure, read_source_context,
-    resolve_failure_file,
+    resolve_failure_file, validate_rust_reproduction_code,
 };
-
 
 #[derive(Debug, Parser)]
 #[command(name = "rootproof")]
@@ -102,14 +101,17 @@ async fn investigate(
 
     println!("Git repository: {}", yes_no(info.is_git_repository));
 
-    match info.language { Some(Language::Rust) => { println!("Language: Rust")}
-        None => { println!("Language: unsupported");
+    match info.language {
+        Some(Language::Rust) => {
+            println!("Language: Rust")
+        }
+        None => {
+            println!("Language: unsupported");
             return Ok(());
         }
     }
 
-    let Some(input_path) = input
-    else {
+    let Some(input_path) = input else {
         println!();
 
         println!("No incident input provided.");
@@ -120,12 +122,11 @@ async fn investigate(
 
     let raw_input = read_incident_input(&input_path)?;
 
-    let failure = parse_rust_failure(&raw_input, "",);
+    let failure = parse_rust_failure(&raw_input, "");
 
     println!();
 
-    let Some(failure) = failure
-    else {
+    let Some(failure) = failure else {
         println!("No supported Rust failure detected.");
         return Ok(());
     };
@@ -138,11 +139,11 @@ async fn investigate(
         println!("Type: {error_type}");
     }
 
-    if let Some(message) = &failure.message{
+    if let Some(message) = &failure.message {
         println!("Message: {message}");
     }
 
-    if let Some(file) = &failure.file{
+    if let Some(file) = &failure.file {
         println!("File: {}", file.display());
     }
 
@@ -150,44 +151,46 @@ async fn investigate(
         println!("Line: {line}");
     }
 
-    if let Some(column) = failure.column{
+    if let Some(column) = failure.column {
         println!("Column: {column}");
     }
 
-    let incident = Incident { id: "RP-0001".to_owned(),
-            repository: info.path.clone(),
+    let incident = Incident {
+        id: "RP-0001".to_owned(),
+        repository: info.path.clone(),
 
-            input_path: Some(input_path),
-            raw_input,
-            failure: failure.clone()};
+        input_path: Some(input_path),
+        raw_input,
+        failure: failure.clone(),
+    };
 
     let mut evidence = EvidenceBundle::new();
-    evidence.push( Evidence { id: "E1".to_owned(),
-            kind: EvidenceKind::Panic,
-            file: failure.file.clone(),
-            line: failure.line,
-            content: failure.message.clone().unwrap_or_default()},
-    );
+    evidence.push(Evidence {
+        id: "E1".to_owned(),
+        kind: EvidenceKind::Panic,
+        file: failure.file.clone(),
+        line: failure.line,
+        content: failure.message.clone().unwrap_or_default(),
+    });
 
-    if let ( Some(file), Some(line)) = ( &failure.file, failure.line){
-        if let Some(relative_file) =
-            resolve_failure_file(&info.path, file){
-            let source = read_source_context(&info.path, &relative_file, line,5)?;
+    if let (Some(file), Some(line)) = (&failure.file, failure.line) {
+        if let Some(relative_file) = resolve_failure_file(&info.path, file) {
+            let source = read_source_context(&info.path, &relative_file, line, 5)?;
             println!();
             println!("Source context:");
             println!();
 
             println!("{}", source.content);
 
-            evidence.push(Evidence { id: "E2".to_owned(),
-                    kind: EvidenceKind::Source,
+            evidence.push(Evidence {
+                id: "E2".to_owned(),
+                kind: EvidenceKind::Source,
 
-                    file: Some(source.file.clone()),
+                file: Some(source.file.clone()),
 
-                    line: Some(source.target_line),
-                    content: source.content.clone()
-                },
-            );
+                line: Some(source.target_line),
+                content: source.content.clone(),
+            });
         } else {
             println!();
 
@@ -197,34 +200,29 @@ async fn investigate(
 
     println!();
 
-    println!(
-        "Evidence collected: {}",
-        evidence
-            .evidence
-            .len()
-    );
+    println!("Evidence collected: {}", evidence.evidence.len());
     let config = load_config()?;
 
-    let provider = OpenRouterProvider::new( config.ai)?;
+    let provider = OpenRouterProvider::new(config.ai)?;
 
     println!();
 
     println!("Analyzing source evidence...");
 
-    let source_analysis = analyze_source( &provider, &evidence).await?;
+    let source_analysis = analyze_source(&provider, &evidence).await?;
     println!();
 
     println!("Source findings:");
 
-    if source_analysis.findings.is_empty(){
+    if source_analysis.findings.is_empty() {
         println!("No source findings returned.");
     } else {
-        for finding in &source_analysis.findings{
+        for finding in &source_analysis.findings {
             println!();
 
             println!("- Type: {}", finding.finding_type);
 
-            if let Some(expression) = &finding.expression{
+            if let Some(expression) = &finding.expression {
                 println!("  Expression: {expression}");
             }
 
@@ -246,8 +244,7 @@ async fn investigate(
         return Ok(());
     }
 
-    for hypothesis in &hypotheses
-    {
+    for hypothesis in &hypotheses {
         println!();
 
         println!("{}", hypothesis.id);
@@ -256,7 +253,7 @@ async fn investigate(
 
         println!("Confidence: {:.0}%", hypothesis.confidence * 100.0);
 
-        if hypothesis.evidence_ids.is_empty(){
+        if hypothesis.evidence_ids.is_empty() {
             println!("Evidence: none");
         } else {
             println!("Evidence: {}", hypothesis.evidence_ids.join(", "));
@@ -264,6 +261,67 @@ async fn investigate(
 
         println!("Status: UNCONFIRMED");
     }
+
+    let strongest_hypothesis = &hypotheses[0];
+
+    println!();
+
+    println!("Generating reproduction for {}...", strongest_hypothesis.id);
+
+    let reproduction = generate_reproduction(
+        &provider,
+        &incident,
+        &evidence,
+        &source_analysis,
+        strongest_hypothesis,
+    )
+    .await?;
+
+    let validation = validate_rust_reproduction_code(&reproduction.test_code);
+
+    println!();
+
+    println!("Reproduction candidate:");
+
+    println!();
+
+    println!("Hypothesis: {}", reproduction.hypothesis_id);
+
+    println!("Test: {}", reproduction.test_name);
+
+    println!("Rationale: {}", reproduction.rationale);
+
+    println!("Expected failure: {}", reproduction.expected_failure);
+
+    println!();
+
+    println!("Generated Rust:");
+
+    println!();
+
+    println!("{}", reproduction.test_code);
+
+    println!();
+
+    match validation {
+        Ok(()) => {
+            println!("Reproduction syntax: VALID");
+
+            println!("Reproduction status: READY_FOR_EXECUTION");
+        }
+
+        Err(error) => {
+            println!("Reproduction syntax: INVALID");
+
+            println!("Reason: {error}");
+
+            println!("Reproduction status: REJECTED");
+        }
+    }
+
+    println!();
+
+    println!("Note: RootProof has not executed this reproduction yet.");
 
     Ok(())
 }

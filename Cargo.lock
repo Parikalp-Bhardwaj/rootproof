@@ -5575,6 +5575,7 @@ dependencies = [
  "rootproof-core",
  "rootproof-executor",
  "rootproof-git",
+ "syn 2.0.119",
  "tempfile",
  "tokio",
 ]

@@ -176,14 +176,16 @@ mod tests {
         }
         "#;
 
-        let output:
-            HypothesisOutput =
+        let output: HypothesisOutput =
             serde_json::from_str(json).expect("deserialize hypothesis output");
 
         assert_eq!(output.hypotheses.len(), 1);
 
         assert_eq!(output.hypotheses[0].confidence, 0.92);
 
-        assert_eq!(output.hypotheses[0].evidence_ids,vec!["E1".to_owned(), "E2".to_owned()]);
+        assert_eq!(
+            output.hypotheses[0].evidence_ids,
+            vec!["E1".to_owned(), "E2".to_owned()]
+        );
     }
 }

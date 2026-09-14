@@ -6,6 +6,7 @@ pub mod hypothesis;
 pub mod incident;
 pub mod input;
 pub mod repository;
+pub mod reproduction;
 pub mod source;
 
 pub use error::RootProofError;
@@ -15,6 +16,7 @@ pub use hypothesis::Hypothesis;
 pub use incident::Incident;
 pub use input::read_incident_input;
 pub use repository::{Language, RepositoryInfo};
+pub use reproduction::ReproductionCandidate;
 pub use source::{SourceAnalysis, SourceContext, SourceFinding};
 
 #[derive(Debug, Clone)]

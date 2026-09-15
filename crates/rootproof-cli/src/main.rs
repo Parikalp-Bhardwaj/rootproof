@@ -1,14 +1,19 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use rootproof_agents::{analyze_source, generate_hypotheses, generate_reproduction};
+use rootproof_agents::{
+    analyze_source, generate_hypotheses, generate_reproduction, regenerate_reproduction,
+};
 use rootproof_ai::{OpenRouterProvider, RootProofConfig, load_config, save_config};
 use rootproof_core::{
-    Evidence, EvidenceBundle, EvidenceKind, Incident, Language, read_incident_input,
+    Evidence, EvidenceBundle, EvidenceKind, Incident, Language, ReproductionStatus,
+    compare_failure_signatures, read_incident_input,
 };
+use rootproof_executor::{CommandSpec, create_isolated_repository, execute};
 use rootproof_language::{
-    LanguageAdapter, RustAdapter, inspect_repository, parse_rust_failure, read_source_context,
-    resolve_failure_file, validate_rust_reproduction_code,
+    LanguageAdapter, RustAdapter, inject_reproduction_test, inspect_repository,
+    normalize_rust_reproduction_code, parse_rust_failure, prepare_rust_reproduction_code,
+    read_source_context, resolve_failure_file, validate_rust_reproduction_code,
 };
 
 #[derive(Debug, Parser)]
@@ -268,7 +273,7 @@ async fn investigate(
 
     println!("Generating reproduction for {}...", strongest_hypothesis.id);
 
-    let reproduction = generate_reproduction(
+    let mut reproduction = generate_reproduction(
         &provider,
         &incident,
         &evidence,
@@ -277,51 +282,248 @@ async fn investigate(
     )
     .await?;
 
-    let validation = validate_rust_reproduction_code(&reproduction.test_code);
+    const MAX_REPRODUCTION_ATTEMPTS: usize = 3;
+
+    let mut normalized_test_code = None;
+
+    for attempt in 1..=MAX_REPRODUCTION_ATTEMPTS {
+        println!();
+
+        println!("Reproduction candidate:");
+
+        println!();
+
+        println!("Attempt: {attempt}/{MAX_REPRODUCTION_ATTEMPTS}");
+
+        println!("Hypothesis: {}", reproduction.hypothesis_id);
+
+        println!("Test: {}", reproduction.test_name);
+
+        println!("Rationale: {}", reproduction.rationale);
+
+        println!("Expected failure: {}", reproduction.expected_failure);
+
+        println!();
+
+        println!("Generated Rust:");
+
+        println!();
+
+        println!("{}", reproduction.test_code);
+
+        println!();
+
+        let normalized = match normalize_rust_reproduction_code(
+            &reproduction.test_code,
+            &reproduction.test_name,
+        ) {
+            Ok(code) => code,
+
+            Err(error) => {
+                println!("Reproduction validation: REJECTED");
+
+                println!("Reason: {error}");
+
+                if attempt == MAX_REPRODUCTION_ATTEMPTS {
+                    println!("Reproduction status: REJECTED");
+
+                    return Ok(());
+                }
+
+                println!();
+
+                println!("Regenerating reproduction...");
+
+                reproduction = regenerate_reproduction(
+                    &provider,
+                    &incident,
+                    &evidence,
+                    &source_analysis,
+                    strongest_hypothesis,
+                    &reproduction,
+                    &error,
+                )
+                .await?;
+
+                continue;
+            }
+        };
+
+        match validate_rust_reproduction_code(&normalized) {
+            Ok(()) => {
+                normalized_test_code = Some(normalized);
+
+                println!("Reproduction syntax: VALID");
+                break;
+            }
+
+            Err(error) => {
+                println!("Reproduction validation: REJECTED");
+
+                println!("Reason: {error}");
+
+                if attempt == MAX_REPRODUCTION_ATTEMPTS {
+                    println!("Reproduction status: REJECTED");
+
+                    return Ok(());
+                }
+
+                println!();
+
+                println!("Regenerating reproduction...");
+
+                reproduction = regenerate_reproduction(
+                    &provider,
+                    &incident,
+                    &evidence,
+                    &source_analysis,
+                    strongest_hypothesis,
+                    &reproduction,
+                    &error,
+                )
+                .await?;
+            }
+        }
+    }
+
+    let Some(normalized_test_code) = normalized_test_code else {
+        println!("Reproduction status: REJECTED");
+
+        return Ok(());
+    };
+
+    println!("Reproduction syntax: VALID");
+
+    let execution_test_name = format!(
+        "rootproof_reproduction_{}",
+        strongest_hypothesis.id.to_lowercase()
+    );
+
+    let prepared_code = prepare_rust_reproduction_code(&normalized_test_code, &execution_test_name)
+        .map_err(std::io::Error::other)?;
+
+    println!("Execution test: {}", execution_test_name);
+
+    let Some(production_file) = &incident.failure.file else {
+        println!("Reproduction status: UNCONFIRMED");
+
+        println!("Reason: production failure has no source file");
+
+        return Ok(());
+    };
+
+    let Some(relative_source_file) = resolve_failure_file(&info.path, production_file) else {
+        println!("Reproduction status: UNCONFIRMED");
+
+        println!("Reason: unable to resolve reproduction source file");
+
+        return Ok(());
+    };
 
     println!();
 
-    println!("Reproduction candidate:");
+    println!("Creating isolated reproduction environment...");
+
+    let isolated = create_isolated_repository(&info.path)?;
+
+    println!("Isolation: READY");
+
+    inject_reproduction_test(isolated.path(), &relative_source_file, &prepared_code)?;
+
+    println!("Generated test injected into isolated repository.");
 
     println!();
 
-    println!("Hypothesis: {}", reproduction.hypothesis_id);
+    println!("Executing reproduction...");
 
-    println!("Test: {}", reproduction.test_name);
+    let command = CommandSpec::new("cargo", isolated.path())
+        .arg("test")
+        .arg(&execution_test_name)
+        .arg("--")
+        .arg("--nocapture");
 
-    println!("Rationale: {}", reproduction.rationale);
+    let result = execute(command).await?;
 
-    println!("Expected failure: {}", reproduction.expected_failure);
+    println!(
+        "Exit code: {}",
+        result
+            .exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "unknown".to_owned())
+    );
+
+    if result.success() {
+        println!("Generated reproduction did not fail.");
+        println!("Reproduction status: UNCONFIRMED");
+
+        return Ok(());
+    }
+
+    let reproduction_failure = parse_rust_failure(&result.stdout, &result.stderr);
+
+    let Some(reproduction_failure) = reproduction_failure else {
+        println!("Generated test failed, but RootProof could not parse a supported Rust failure.");
+        println!("Reproduction status: UNCONFIRMED");
+
+        return Ok(());
+    };
 
     println!();
 
-    println!("Generated Rust:");
+    println!("Reproduction failure:");
+
+    if let Some(error_type) = &reproduction_failure.error_type {
+        println!("Type: {error_type}");
+    }
+
+    if let Some(message) = &reproduction_failure.message {
+        println!("Message: {message}");
+    }
+
+    if let Some(file) = &reproduction_failure.file {
+        println!("File: {}", file.display());
+    }
+
+    if let Some(line) = reproduction_failure.line {
+        println!("Line: {line}");
+    }
+
+    let failure_match = compare_failure_signatures(&incident.failure, &reproduction_failure);
 
     println!();
 
-    println!("{}", reproduction.test_code);
+    println!("Failure signature comparison:");
+
+    println!(
+        "Error type match: {}",
+        yes_no(failure_match.error_type_match)
+    );
+
+    println!("Message match: {}", yes_no(failure_match.message_match));
+
+    println!("Match score: {:.0}%", failure_match.score * 100.0);
 
     println!();
 
-    match validation {
-        Ok(()) => {
-            println!("Reproduction syntax: VALID");
-
-            println!("Reproduction status: READY_FOR_EXECUTION");
+    match failure_match.status {
+        ReproductionStatus::StronglyReproduced => {
+            println!("Reproduction status: STRONGLY_REPRODUCED");
         }
 
-        Err(error) => {
-            println!("Reproduction syntax: INVALID");
+        ReproductionStatus::PartiallyReproduced => {
+            println!("Reproduction status: PARTIALLY_REPRODUCED");
+        }
 
-            println!("Reason: {error}");
-
-            println!("Reproduction status: REJECTED");
+        ReproductionStatus::Unconfirmed => {
+            println!("Reproduction status: UNCONFIRMED");
         }
     }
 
     println!();
 
-    println!("Note: RootProof has not executed this reproduction yet.");
+    println!(
+        "RootProof reproduced the failure behavior; this does not yet prove the proposed fix."
+    );
 
     Ok(())
 }

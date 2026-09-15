@@ -24,60 +24,192 @@ pub async fn generate_reproduction(
     let input = build_reproduction_input(incident, evidence, source_analysis, hypothesis);
 
     let preamble = r#"
-                You are RootProof's Rust Reproduction Agent.
+        You are RootProof's Rust Reproduction Agent.
 
-                Your task is to generate one minimal Rust test that attempts
-                to reproduce the supplied hypothesis.
+        Your ONLY goal is to reproduce the OBSERVED PRODUCTION FAILURE.
 
-                Important rules:
+        You are NOT validating the proposed correct behavior.
+        You are NOT testing a fix.
+        You are NOT writing what the code should do.
 
-                1. Use only the supplied incident, evidence, source findings,
-                and selected hypothesis.
+        The reproduction test must attempt to trigger the same failure
+        signature observed in the incident.
 
-                2. Do not invent APIs, structs, functions, modules, fields,
-                dependencies, files, or runtime behavior that are not present
-                in the supplied evidence.
+        STRICT RULES:
 
-                3. Generate exactly one Rust #[test] function.
+        1. Use only the supplied incident, deterministic evidence,
+        source findings, and selected hypothesis.
 
-                4. The generated test should be as small as possible.
+        2. Generate exactly one #[test] function.
 
-                5. The purpose of the test is to reproduce the observed failure,
-                not to fix it.
+        3. The test must exercise EXISTING repository code.
 
-                6. Do not modify production code.
+        4. NEVER redefine, reimplement, mock, shadow, duplicate, or replace
+        production functions, structs, enums, traits, modules, constants,
+        statics, or types.
 
-                7. Do not generate a patch.
+        5. If the incident contains a concrete failing operation or assertion,
+        preserve that failing behavior in the reproduction.
 
-                8. Do not use shell commands.
+        6. Do NOT change an observed failing assertion into the expected
+        correct behavior.
 
-                9. Do not use network access.
+        For example, if the incident contains:
 
-                10. Do not use filesystem access unless the evidence explicitly
-                    shows that filesystem behavior is required.
+            assert_eq!(divide(10, 2), 10);
 
-                11. Do not add dependencies.
+        do NOT generate:
 
-                12. Do not use unsafe Rust.
+            assert_eq!(divide(10, 2), 5);
 
-                13. Do not claim the hypothesis is proven.
+        because that tests corrected behavior rather than reproducing
+        the observed failure.
 
-                14. The test_code field must contain raw Rust source only.
+        7. The generated test should attempt to fail in the same way
+        as the incident.
 
-                15. Do not wrap test_code in Markdown code fences.
+        8. Do not generate a fix.
 
-                16. expected_failure should describe what RootProof should expect
-                    to observe if this hypothesis is correct.
+        9. Do not generate a regression test for the proposed fix.
 
-                17. Prefer calling existing repository functions directly.
+        10. Do not invent repository behavior or claim an actual return
+            value unless deterministic evidence supplies it.
 
-                18. If the available evidence is insufficient to create a valid
-                    test without inventing repository details, generate the smallest
-                    test possible using only known symbols and explain the limitation
-                    in rationale.
+        11. Do not add dependencies.
 
-                Return exactly one reproduction candidate.
-                "#;
+        12. Do not use shell commands.
+
+        13. Do not use network access.
+
+        14. Do not use unsafe Rust.
+
+        15. test_code must contain raw Rust source only.
+
+        16. Do not wrap test_code in Markdown fences.
+
+        17. If there is insufficient evidence to reproduce the failure
+            without inventing details, say so through the rationale and
+            generate only what can be supported by the supplied evidence.
+
+        The purpose of this agent is FAILURE REPRODUCTION, not correctness validation.
+        "#;
+
+    let output: ReproductionOutput = provider.extract(&input, preamble).await?;
+    Ok(ReproductionCandidate {
+        hypothesis_id: hypothesis.id.clone(),
+        test_name: output.test_name,
+        test_code: output.test_code,
+        rationale: output.rationale,
+        expected_failure: output.expected_failure,
+    })
+}
+
+pub async fn regenerate_reproduction(
+    provider: &OpenRouterProvider,
+    incident: &Incident,
+    evidence: &EvidenceBundle,
+    source_analysis: &SourceAnalysis,
+    hypothesis: &Hypothesis,
+    previous_candidate: &ReproductionCandidate,
+    rejection_reason: &str,
+) -> Result<ReproductionCandidate, Box<dyn std::error::Error>> {
+    let mut input = build_reproduction_input(incident, evidence, source_analysis, hypothesis);
+
+    input.push_str("\nPREVIOUS REPRODUCTION WAS REJECTED\n");
+
+    input.push_str("\nPrevious test code:\n");
+
+    input.push_str(&previous_candidate.test_code);
+
+    input.push_str("\n\nDeterministic rejection reason:\n");
+
+    input.push_str(rejection_reason);
+
+    input.push_str(
+        r#"
+
+        Generate a corrected reproduction.
+
+        You MUST correct the deterministic validation error.
+
+        Do not work around the validator.
+
+        Do not redefine any repository function or production implementation.
+
+        The reproduction must exercise the existing repository code.
+        "#,
+    );
+
+    let preamble = r#"
+        You are RootProof's Rust Reproduction Agent.
+
+        Your ONLY goal is to reproduce the OBSERVED PRODUCTION FAILURE.
+
+        You are NOT validating the proposed correct behavior.
+        You are NOT testing a fix.
+        You are NOT writing what the code should do.
+
+        The reproduction test must attempt to trigger the same failure
+        signature observed in the incident.
+
+        STRICT RULES:
+
+        1. Use only the supplied incident, deterministic evidence,
+        source findings, and selected hypothesis.
+
+        2. Generate exactly one #[test] function.
+
+        3. The test must exercise EXISTING repository code.
+
+        4. NEVER redefine, reimplement, mock, shadow, duplicate, or replace
+        production functions, structs, enums, traits, modules, constants,
+        statics, or types.
+
+        5. If the incident contains a concrete failing operation or assertion,
+        preserve that failing behavior in the reproduction.
+
+        6. Do NOT change an observed failing assertion into the expected
+        correct behavior.
+
+        For example, if the incident contains:
+
+            assert_eq!(divide(10, 2), 10);
+
+        do NOT generate:
+
+            assert_eq!(divide(10, 2), 5);
+
+        because that tests corrected behavior rather than reproducing
+        the observed failure.
+
+        7. The generated test should attempt to fail in the same way
+        as the incident.
+
+        8. Do not generate a fix.
+
+        9. Do not generate a regression test for the proposed fix.
+
+        10. Do not invent repository behavior or claim an actual return
+            value unless deterministic evidence supplies it.
+
+        11. Do not add dependencies.
+
+        12. Do not use shell commands.
+
+        13. Do not use network access.
+
+        14. Do not use unsafe Rust.
+
+        15. test_code must contain raw Rust source only.
+
+        16. Do not wrap test_code in Markdown fences.
+
+        17. If there is insufficient evidence to reproduce the failure
+            without inventing details, say so through the rationale and
+            generate only what can be supported by the supplied evidence.
+
+        The purpose of this agent is FAILURE REPRODUCTION, not correctness validation.
+        "#;
 
     let output: ReproductionOutput = provider.extract(&input, preamble).await?;
     Ok(ReproductionCandidate {
@@ -173,19 +305,40 @@ mod tests {
 
     #[test]
     fn reproduction_output_deserializes() {
-        let json = r#"
-        {
-            "test_name": "reproduces_divide_expectation",
-            "test_code": '#[test]n fn reproduces_divide_expectation() {\n    assert_eq!(divide(10, 2), 10);\n}',
-            "rationale": "Replays the failing assertion.",
-            "expected_failure": "assertion left == right fails"
-        }"#;
+        let value = serde_json::json!({
+            "test_name":
+                "reproduces_divide_expectation",
+
+            "test_code":
+                r#"#[test]
+                    fn reproduces_divide_expectation() {
+                        assert_eq!(divide(10, 2), 10);
+                    }"#,
+
+            "rationale":
+                "Replays the observed failing assertion using the existing divide function.",
+
+            "expected_failure":
+                "The assertion left == right fails."
+        });
 
         let output: ReproductionOutput =
-            serde_json::from_str(json).expect("deserialize reproduction output");
+            serde_json::from_value(value).expect("deserialize reproduction output");
 
         assert_eq!(output.test_name, "reproduces_divide_expectation");
 
         assert!(output.test_code.contains("#[test]"));
+
+        assert!(output.test_code.contains("assert_eq!(divide(10, 2), 10)"));
+
+        assert_eq!(
+            output.rationale,
+            "Replays the observed failing assertion using the existing divide function."
+        );
+
+        assert_eq!(
+            output.expected_failure,
+            "The assertion left == right fails."
+        );
     }
 }

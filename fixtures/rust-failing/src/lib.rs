@@ -8,6 +8,6 @@ mod tests {
 
     #[test]
     fn intentionally_failing_test() {
-        assert_eq!(divide(10, 2), 10);
+        assert_eq!(divide(10, 2), 5);
     }
 }

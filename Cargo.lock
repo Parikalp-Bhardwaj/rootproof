@@ -5540,6 +5540,7 @@ dependencies = [
  "rootproof-agents",
  "rootproof-ai",
  "rootproof-core",
+ "rootproof-executor",
  "rootproof-language",
  "tokio",
 ]
@@ -5571,6 +5572,7 @@ dependencies = [
 name = "rootproof-language"
 version = "0.1.0"
 dependencies = [
+ "prettyplease",
  "regex",
  "rootproof-core",
  "rootproof-executor",

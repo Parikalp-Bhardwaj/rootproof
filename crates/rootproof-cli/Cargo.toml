@@ -11,3 +11,4 @@ rootproof-core = { path = "../rootproof-core" }
 rootproof-language = { path = "../rootproof-language" }
 rootproof-ai = { path = "../rootproof-ai" }
 rootproof-agents = { path = "../rootproof-agents"}
+rootproof-executor = { path = "../rootproof-executor"}

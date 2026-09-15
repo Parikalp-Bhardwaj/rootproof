@@ -9,6 +9,7 @@ rootproof-git =  { path = "../rootproof-git" }
 rootproof-executor = { path = "../rootproof-executor" }
 regex = "1"
 syn = { version = "2", features = ["full"] }
+prettyplease = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

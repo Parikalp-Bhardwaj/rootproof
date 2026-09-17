@@ -2,18 +2,21 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use rootproof_agents::{
-    analyze_source, generate_hypotheses, generate_reproduction, regenerate_reproduction,
+    analyze_source, generate_candidate_fix, generate_hypotheses, generate_reproduction,
+    regenerate_reproduction,
 };
+
 use rootproof_ai::{OpenRouterProvider, RootProofConfig, load_config, save_config};
 use rootproof_core::{
-    Evidence, EvidenceBundle, EvidenceKind, Incident, Language, ReproductionStatus,
-    compare_failure_signatures, read_incident_input,
+    Evidence, EvidenceBundle, EvidenceKind, FixValidationStatus, Incident, Language,
+    ReproductionStatus, compare_failure_signatures, read_incident_input,
 };
 use rootproof_executor::{CommandSpec, create_isolated_repository, execute};
 use rootproof_language::{
-    LanguageAdapter, RustAdapter, inject_reproduction_test, inspect_repository,
-    normalize_rust_reproduction_code, parse_rust_failure, prepare_rust_reproduction_code,
-    read_source_context, resolve_failure_file, validate_rust_reproduction_code,
+    LanguageAdapter, RustAdapter, apply_candidate_fix, inject_reproduction_test,
+    inspect_repository, normalize_rust_reproduction_code, parse_rust_failure,
+    prepare_rust_reproduction_code, read_source_context, resolve_failure_file,
+    validate_rust_reproduction_code,
 };
 
 #[derive(Debug, Parser)]
@@ -392,8 +395,6 @@ async fn investigate(
         return Ok(());
     };
 
-    println!("Reproduction syntax: VALID");
-
     let execution_test_name = format!(
         "rootproof_reproduction_{}",
         strongest_hypothesis.id.to_lowercase()
@@ -521,9 +522,171 @@ async fn investigate(
 
     println!();
 
+    if failure_match.status != ReproductionStatus::StronglyReproduced {
+        println!();
+        println!("Candidate fix generation skipped.");
+        println!("Reason: failure behavior was not strongly reproduced.");
+        return Ok(());
+    }
+
+    println!();
+    println!("Failure behavior strongly reproduced.");
+
+    println!("This supports the selected hypothesis but does not yet validate a fix.");
+
     println!(
-        "RootProof reproduced the failure behavior; this does not yet prove the proposed fix."
+        "Generating candidate fix for {}...",
+        strongest_hypothesis.id
     );
+
+    let candidate_fix = generate_candidate_fix(
+        &provider,
+        &incident,
+        &evidence,
+        &source_analysis,
+        strongest_hypothesis,
+    )
+    .await?;
+
+    println!();
+
+    println!("Candidate fix:");
+
+    println!();
+
+    println!("Hypothesis: {}", candidate_fix.hypothesis_id);
+
+    println!("Target file: {}", candidate_fix.target_file.display());
+
+    println!("Rationale: {}", candidate_fix.rationale);
+
+    println!();
+
+    println!("Original code:");
+
+    println!("{}", candidate_fix.original_code);
+
+    println!();
+
+    println!("Replacement code:");
+
+    println!("{}", candidate_fix.replacement_code);
+
+    println!();
+
+    println!("Creating isolated fix-validation environment...");
+
+    let fix_isolation = create_isolated_repository(&info.path)?;
+
+    println!("Fix isolation: READY");
+
+    let resolved_target = if fix_isolation
+        .path()
+        .join(&candidate_fix.target_file)
+        .is_file()
+    {
+        candidate_fix.target_file.clone()
+    } else {
+        let Some(resolved) = resolve_failure_file(fix_isolation.path(), &candidate_fix.target_file)
+        else {
+            println!("Fix validation status: REJECTED");
+
+            println!("Reason: candidate fix target file could not be resolved");
+
+            return Ok(());
+        };
+
+        resolved
+    };
+
+    let mut candidate_fix = candidate_fix;
+
+    candidate_fix.target_file = resolved_target;
+
+    if let Err(error) = apply_candidate_fix(fix_isolation.path(), &candidate_fix) {
+        println!("Fix validation status: REJECTED");
+
+        println!("Reason: {error}");
+
+        return Ok(());
+    }
+
+    println!("Candidate fix applied in isolated repository.");
+
+    println!();
+
+    println!("Running cargo check after candidate fix...");
+
+    let check_command = CommandSpec::new("cargo", fix_isolation.path()).arg("check");
+
+    let check_result = execute(check_command).await?;
+
+    if !check_result.success() {
+        println!("cargo check: FAIL");
+
+        println!("Fix validation status: REJECTED");
+
+        if !check_result.stderr.trim().is_empty() {
+            println!();
+            println!("{}", check_result.stderr);
+        }
+
+        return Ok(());
+    }
+
+    println!("cargo check: PASS");
+
+    println!();
+
+    println!("Running repository test suite after candidate fix...");
+
+    let test_command = CommandSpec::new("cargo", fix_isolation.path()).arg("test");
+
+    let test_result = execute(test_command).await?;
+
+    if !test_result.success() {
+        println!("cargo test: FAIL");
+
+        println!("Fix validation status: REJECTED");
+
+        if let Some(test_failure) = parse_rust_failure(&test_result.stdout, &test_result.stderr) {
+            println!();
+
+            println!("Remaining failure:");
+
+            if let Some(error_type) = &test_failure.error_type {
+                println!("Type: {error_type}");
+            }
+
+            if let Some(message) = &test_failure.message {
+                println!("Message: {message}");
+            }
+        }
+
+        return Ok(());
+    }
+
+    println!("cargo test: PASS");
+
+    let fix_status = FixValidationStatus::Validated;
+
+    println!();
+
+    match fix_status {
+        FixValidationStatus::Validated => {
+            println!("Fix validation status: VALIDATED");
+        }
+
+        FixValidationStatus::Rejected => {
+            println!("Fix validation status: REJECTED");
+        }
+    }
+
+    println!();
+
+    println!("Candidate fix validated in isolation.");
+
+    println!("The user's repository was not modified.");
 
     Ok(())
 }

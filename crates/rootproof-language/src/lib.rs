@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod detection;
 pub mod failure;
+pub mod fix;
 pub mod injection;
 pub mod inspect;
 pub mod reproduction;
@@ -10,6 +11,7 @@ pub mod source;
 pub use adapter::LanguageAdapter;
 pub use detection::detect_language;
 pub use failure::parse_rust_failure;
+pub use fix::apply_candidate_fix;
 pub use injection::inject_reproduction_test;
 pub use inspect::inspect_repository;
 pub use reproduction::{

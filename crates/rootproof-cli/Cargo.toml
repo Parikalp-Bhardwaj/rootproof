@@ -12,3 +12,6 @@ rootproof-language = { path = "../rootproof-language" }
 rootproof-ai = { path = "../rootproof-ai" }
 rootproof-agents = { path = "../rootproof-agents"}
 rootproof-executor = { path = "../rootproof-executor"}
+rootproof-tui = { path = "../rootproof-tui" }
+ratatui = "0.29"
+crossterm = "0.28"

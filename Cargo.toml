@@ -9,7 +9,9 @@ members = [
     "crates/rootproof-ai",
     "crates/rootproof-agents",
     "crates/rootproof-git",
-    "examples/rust-basic", "fixtures/rust-failing",
+    "crates/rootproof-tui",
+    "examples/rust-basic", 
+    "fixtures/rust-failing",
 ]
 
 

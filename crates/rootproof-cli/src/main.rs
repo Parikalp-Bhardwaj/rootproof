@@ -18,6 +18,8 @@ use rootproof_language::{
     prepare_rust_reproduction_code, read_source_context, resolve_failure_file,
     validate_rust_reproduction_code,
 };
+mod tui;
+use tui::run_tui;
 
 #[derive(Debug, Parser)]
 #[command(name = "rootproof")]
@@ -38,20 +40,23 @@ enum Commands {
         repo: PathBuf,
     },
 
-    /// Run the Rust repository test suite.
+    /// Run tests for a Rust repository.
     Test {
         #[arg(long, default_value = ".")]
         repo: PathBuf,
     },
+
+    /// Test AI provider connectivity.
+    AiTest,
+
+    /// Launch the RootProof terminal UI.
+    Tui,
 
     /// Configure RootProof.
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
     },
-
-    /// Test the configured AI provider.
-    AiTest,
 }
 
 #[derive(Debug, Subcommand)]
@@ -84,12 +89,16 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             run_tests(repo).await?;
         }
 
-        Commands::Config { command } => {
-            run_config(command).await?;
-        }
-
         Commands::AiTest => {
             run_ai_test().await?;
+        }
+
+        Commands::Tui => {
+            run_tui()?;
+        }
+
+        Commands::Config { command } => {
+            run_config(command).await?;
         }
     }
 
